@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>TXQR Sender</title>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+  <style>
+    body { font-family: sans-serif; text-align: center; padding: 20px; }
+    #qr { width: 300px; height: 300px; margin: 20px auto; }
+  </style>
+</head>
+<body>
+  <h1>TXQR Sender</h1>
+  <input type="file" id="fileInput"><br><br>
+  <label>Chunk Size (bytes): <input type="number" id="chunkSize" value="512"></label><br><br>
+  <canvas id="qr"></canvas>
+
+  <script>
+    let chunks = [];
+    let canvas = document.getElementById('qr');
+    let ctx = canvas.getContext('2d');
+
+    function chunkData(buffer, size) {
+      let result = [];
+      for (let i = 0; i < buffer.byteLength; i += size) {
+        result.push(buffer.slice(i, i + size));
+      }
+      return result;
+    }
+
+    function generateFountainChunk(chunks) {
+      let count = Math.floor(Math.random() * Math.min(5, chunks.length)) + 1;
+      let indices = [];
+      let xor = new Uint8Array(chunks[0].byteLength).fill(0);
+
+      for (let i = 0; i < count; i++) {
+        let idx = Math.floor(Math.random() * chunks.length);
+        indices.push(idx);
+        let chunk = new Uint8Array(chunks[idx]);
+        for (let j = 0; j < chunk.length; j++) {
+          xor[j] ^= chunk[j];
+        }
+      }
+
+      let meta = `${count}:${indices.join(",")}`;
+      let payload = btoa(String.fromCharCode(...xor));
+      return `${meta}|${payload}`;
+    }
+
+    function startStreaming() {
+      setInterval(() => {
+        let data = generateFountainChunk(chunks);
+        QRCode.toCanvas(canvas, data, { width: 300 }, err => {
+          if (err) console.error(err);
+        });
+      }, 200); // Adjust frame rate
+    }
+
+    document.getElementById('fileInput').addEventListener('change', async e => {
+      let file = e.target.files[0];
+      let chunkSize = parseInt(document.getElementById('chunkSize').value);
+      let buffer = await file.arrayBuffer();
+      chunks = chunkData(buffer, chunkSize);
+      startStreaming();
+    });
+  </script>
+</body>
+</html>

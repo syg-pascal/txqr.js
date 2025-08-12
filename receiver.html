@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>TXQR Receiver</title>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr/dist/jsQR.js"></script>
+    <style>
+        body { font-family: sans-serif; text-align: center; padding: 20px; }
+        video, canvas { display: block; margin: 0 auto; }
+    </style>
+</head>
+<body>
+<h1>TXQR Receiver</h1>
+<video id="video" width="300" height="300" autoplay></video>
+<canvas id="canvas" width="300" height="300" style="display:none;"></canvas>
+<p id="status">Waiting for chunks...</p>
+
+<script>
+    let receivedChunks = {};
+    let video = document.getElementById('video');
+    let canvas = document.getElementById('canvas');
+    let ctx = canvas.getContext('2d');
+
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+        .then(stream => video.srcObject = stream);
+
+    function decodeFountainChunk(data) {
+        try {
+            let [meta, payload] = data.split("|");
+            let [count, indices] = meta.split(":");
+            let indexList = indices.split(",").map(Number);
+            let chunk = Uint8Array.from(atob(payload), c => c.charCodeAt(0));
+            return { indices: indexList, chunk };
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function reconstructFile() {
+        let blob = new Blob(Object.values(receivedChunks), { type: "application/octet-stream" });
+        let url = URL.createObjectURL(blob);
+        let a = document.createElement("a");
+        a.href = url;
+        a.download = "reconstructed_file.bin";
+        a.click();
+    }
+
+    function scanFrame() {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        let code = jsQR(imageData.data, imageData.width, imageData.height);
+        if (code) {
+            let result = decodeFountainChunk(code.data);
+            if (result) {
+                result.indices.forEach(i => {
+                    if (!receivedChunks[i]) {
+                        receivedChunks[i] = result.chunk;
+                    }
+                });
+                document.getElementById('status').textContent = `Chunks received: ${Object.keys(receivedChunks).length}`;
+                if (Object.keys(receivedChunks).length > 20) {
+                    reconstructFile();
+                    document.getElementById('status').textContent = "File reconstructed!";
+                }
+            }
+        }
+        requestAnimationFrame(scanFrame);
+    }
+
+    video.addEventListener('play', () => {
+        requestAnimationFrame(scanFrame);
+    });
+</script>
+</body>
+</html>
